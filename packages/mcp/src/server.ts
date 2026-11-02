@@ -1,7 +1,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebcrawlClient, describeError } from "@webcrawl/client";
+import { WebcrawlClient, WebcrawlError, describeError } from "@webcrawl/client";
 import { z } from "zod";
-import { formatCredits, formatCrawl, formatMap, formatParse, formatScrape, formatSearch, truncate } from "./format.js";
+import {
+  formatCredits,
+  formatCrawl,
+  formatMap,
+  formatMonitor,
+  formatParse,
+  formatScrape,
+  formatSearch,
+  truncate,
+} from "./format.js";
 
 export type SchemaProfile = "compact" | "full";
 
@@ -15,6 +24,12 @@ export type WebcrawlLikeClient = Pick<
   "baseUrl" | "search" | "scrape" | "parse" | "run" | "map" | "crawl" | "extract" | "rerank" | "categories"
 > & {
   targets?: () => Promise<Record<string, unknown>>;
+  monitors?: WebcrawlClient["monitors"];
+  getMonitor?: WebcrawlClient["getMonitor"];
+  createMonitor?: WebcrawlClient["createMonitor"];
+  checkMonitor?: WebcrawlClient["checkMonitor"];
+  updateMonitor?: WebcrawlClient["updateMonitor"];
+  deleteMonitor?: WebcrawlClient["deleteMonitor"];
 };
 
 const INSTRUCTIONS = `Webcrawl Anything gives you live web & target inspection access (zero-key local engine or webcrawl.app cloud).
@@ -25,6 +40,7 @@ const INSTRUCTIONS = `Webcrawl Anything gives you live web & target inspection a
 - web_crawl: read several pages of one site (max 25).
 - web_extract: pull structured JSON from one URL with a prompt or schema.
 - web_rerank: order your own documents by relevance to a query.
+- web_monitor: watch a page, list of URLs, or whole website on a schedule with trigger conditions and email/webhook alerts (create, list, get, check, pause, resume, delete).
 - search_categories: list valid categories, subcategories, filters, and supported crawl targets.`;
 
 type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -267,6 +283,131 @@ export function createWebcrawlMcpServer(
           return `${i + 1}.${score} ${text}`;
         });
         return (lines.length ? lines.join("\n") : JSON.stringify(res, null, 2)) + formatCredits(res);
+      })
+  );
+
+  server.registerTool(
+    "web_monitor",
+    {
+      title: "Monitor web pages or sites",
+      description: compact
+        ? "Create, list, inspect, check, pause, resume, or delete scheduled web monitors with trigger conditions."
+        : "Watch a single page, a list of URLs, or a whole website section on a schedule. Supports natural-language `watch_for` focus, explicit `condition` rules (e.g. `price < 50`, `content contains \"In Stock\"`, `added_urls_count > 0`), and email or webhook notifications.",
+      inputSchema: {
+        action: desc(
+          z.enum(["create", "list", "get", "check", "pause", "resume", "delete"]).optional(),
+          "Action to perform (defaults to 'create' when url/urls given, else 'list')"
+        ),
+        id: desc(z.string().optional(), "Monitor ID (required for get, check, pause, resume, delete)"),
+        url: desc(z.string().url().optional(), "Page or site URL to watch"),
+        urls: desc(z.array(z.string().url()).optional(), "Multiple URLs to watch when mode is 'urls'"),
+        mode: desc(z.enum(["page", "urls", "site"]).optional(), "Watch scope: page (default), urls, or site"),
+        max_pages: desc(z.number().int().min(1).max(25).optional(), "Max pages to sample when mode is 'site' (default 5)"),
+        name: desc(z.string().optional(), "Optional friendly watch name"),
+        interval_minutes: desc(z.number().int().min(5).max(10080).optional(), "Check interval in minutes (default 60)"),
+        watch_for: desc(z.string().optional(), "What to watch for, e.g. 'Pricing tiers and discounts'"),
+        condition: desc(
+          z.string().optional(),
+          "Optional trigger rule expression, e.g. 'price < 50', 'content contains \"In Stock\"', 'added_urls_count > 0'"
+        ),
+        notify_email: desc(
+          z.string().optional(),
+          "Email address to notify when triggered, or 'true' to use the account email"
+        ),
+        webhook_url: desc(z.string().url().optional(), "HTTPS webhook URL to POST when triggered"),
+      },
+      annotations: { readOnlyHint: false, openWorldHint: true },
+    },
+    ({
+      action,
+      id,
+      url,
+      urls,
+      mode,
+      max_pages,
+      name,
+      interval_minutes,
+      watch_for,
+      condition,
+      notify_email,
+      webhook_url,
+    }) =>
+      run(async () => {
+        const effectiveAction = action ?? (url || (urls && urls.length) ? "create" : "list");
+        const requireId = (op: string): string => {
+          if (!id) {
+            throw new WebcrawlError("bad_request", `web_monitor action '${op}' requires 'id'`);
+          }
+          return id;
+        };
+
+        switch (effectiveAction) {
+          case "list": {
+            if (!client.monitors) {
+              throw new WebcrawlError("bad_request", "Web monitors require a cloud WebcrawlClient (set WEBCRAWL_API_KEY).");
+            }
+            const res = await client.monitors();
+            return formatMonitor(res) + formatCredits(res);
+          }
+          case "get": {
+            if (!client.getMonitor) {
+              throw new WebcrawlError("bad_request", "Web monitors require a cloud WebcrawlClient (set WEBCRAWL_API_KEY).");
+            }
+            const res = await client.getMonitor(requireId("get"));
+            return formatMonitor(res) + formatCredits(res);
+          }
+          case "check": {
+            if (!client.checkMonitor) {
+              throw new WebcrawlError("bad_request", "Web monitors require a cloud WebcrawlClient (set WEBCRAWL_API_KEY).");
+            }
+            const res = await client.checkMonitor(requireId("check"));
+            return formatMonitor(res) + formatCredits(res);
+          }
+          case "pause":
+          case "resume": {
+            if (!client.updateMonitor) {
+              throw new WebcrawlError("bad_request", "Web monitors require a cloud WebcrawlClient (set WEBCRAWL_API_KEY).");
+            }
+            const res = await client.updateMonitor({
+              id: requireId(effectiveAction),
+              status: effectiveAction === "pause" ? "paused" : "active",
+              ...(name !== undefined ? { name } : {}),
+              ...(interval_minutes !== undefined ? { intervalMinutes: interval_minutes } : {}),
+              ...(watch_for !== undefined ? { watchFor: watch_for } : {}),
+              ...(condition !== undefined ? { condition } : {}),
+              ...(notify_email !== undefined
+                ? { notifyEmail: notify_email === "true" ? true : notify_email }
+                : {}),
+              ...(webhook_url !== undefined ? { webhookUrl: webhook_url } : {}),
+            });
+            return formatMonitor(res) + formatCredits(res);
+          }
+          case "delete": {
+            if (!client.deleteMonitor) {
+              throw new WebcrawlError("bad_request", "Web monitors require a cloud WebcrawlClient (set WEBCRAWL_API_KEY).");
+            }
+            const res = await client.deleteMonitor(requireId("delete"));
+            return formatMonitor(res) + formatCredits(res);
+          }
+          case "create": {
+            if (!client.createMonitor) {
+              throw new WebcrawlError("bad_request", "Web monitors require a cloud WebcrawlClient (set WEBCRAWL_API_KEY).");
+            }
+            const res = await client.createMonitor({
+              url: url ?? urls?.[0],
+              urls,
+              mode: mode ?? (urls && urls.length > 1 ? "urls" : "page"),
+              maxPages: max_pages,
+              name,
+              intervalMinutes: interval_minutes,
+              watchFor: watch_for,
+              condition,
+              notifyEmail: notify_email === "true" ? true : notify_email,
+              webhookUrl: webhook_url,
+            });
+            return formatMonitor(res) + formatCredits(res);
+          }
+        }
       })
   );
 

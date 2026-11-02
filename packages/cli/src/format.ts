@@ -115,3 +115,66 @@ export function formatTargets(res: Rec): string {
     })
     .join("\n\n");
 }
+
+function formatMonitorItem(m: Rec, index?: number): string {
+  const num = index !== undefined ? `${String(index + 1).padStart(2)}  ` : "";
+  const id = str(m.id);
+  const name = str(m.name) || str(m.url) || "(unnamed watch)";
+  const status = str(m.status) || "active";
+  const mode = str(m.mode) || "page";
+  const urls = Array.isArray(m.urls) ? m.urls.map(str).filter(Boolean) : [];
+  const scopeLabel =
+    mode === "site"
+      ? `site (max ${str(m.maxPages) || "5"} pages)`
+      : mode === "urls"
+        ? `${urls.length || 1} URLs`
+        : "1 page";
+  const interval = typeof m.intervalMinutes === "number" ? `every ${m.intervalMinutes}m` : "";
+  const condExpr = str(m.conditionJev) || (typeof m.condition === "string" ? m.condition : "");
+  const goal = condExpr ? `rule: ${condExpr}` : str(m.watchFor) ? `goal: ${str(m.watchFor)}` : "any change";
+  const condMet =
+    typeof m.lastConditionMet === "boolean"
+      ? m.lastConditionMet
+        ? "triggered"
+        : "waiting"
+      : "";
+  const meta = [status, scopeLabel, interval, condMet].filter(Boolean).join(" · ");
+  const pad = index !== undefined ? "    " : "";
+  const diff = str(m.lastDiffSummary);
+  return [
+    `${num}${name}  [${id}]  (${meta})`,
+    `${pad}${str(m.url)}${urls.length > 1 ? ` (+${urls.length - 1} more)` : ""}  ·  ${goal}`,
+    diff ? `${pad}Latest: ${diff}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function formatMonitor(res: Rec): string {
+  if (res.deleted === true) {
+    return "Monitor deleted.";
+  }
+  if (Array.isArray(res.monitors)) {
+    const list = res.monitors.filter(isRec);
+    if (!list.length) {return "No active watches.";}
+    return list.map((m, i) => formatMonitorItem(m, i)).join("\n\n");
+  }
+  const m = isRec(res.monitor) ? res.monitor : isRec(res.data) ? res.data : null;
+  if (!m) {return JSON.stringify(res, null, 2);}
+  const check = isRec(res.check) ? res.check : isRec(res.initialCheck) ? res.initialCheck : null;
+  const lines = [formatMonitorItem(m)];
+  if (check) {
+    const condRes = isRec(check.conditionResult) ? check.conditionResult : null;
+    if (condRes && str(condRes.summary)) {
+      lines.push(`Condition: ${str(condRes.summary)} (met: ${Boolean(condRes.met)})`);
+    }
+    if (str(check.diffSummary)) {
+      lines.push(`Summary: ${str(check.diffSummary)}`);
+    }
+  }
+  const snap = (check && str(check.snapshot)) || str(m.lastSnapshot);
+  if (snap) {
+    lines.push(`\n${snap}`);
+  }
+  return lines.join("\n");
+}

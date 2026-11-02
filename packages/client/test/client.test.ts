@@ -89,6 +89,52 @@ describe("WebcrawlClient", () => {
     assert.match(describeError(new WebcrawlError("auth", "x", { status: 401 })), /webcrawl login/);
     assert.match(describeError(new WebcrawlError("rate_limit", "x", { retryAfter: 3 })), /3s/);
   });
+
+  it("supports monitor lifecycle methods (create, list, get, check, update, delete)", async () => {
+    const { f, calls } = fakeFetch(200, {
+      success: true,
+      monitor: { id: "mon_1", url: "https://example.com/pricing", status: "active", intervalMinutes: 60 },
+    });
+    const c = new WebcrawlClient({ apiKey: "wc_live_x", baseUrl: "https://x.test", fetch: f });
+
+    await c.createMonitor({
+      url: "https://example.com/pricing",
+      mode: "page",
+      watchFor: "Plan prices",
+      condition: "price < 50",
+      notifyEmail: true,
+    });
+    assert.equal(calls[0].url, "https://x.test/v1/monitors");
+    assert.equal(calls[0].init.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)), {
+      url: "https://example.com/pricing",
+      mode: "page",
+      watchFor: "Plan prices",
+      condition: "price < 50",
+      notifyEmail: true,
+    });
+
+    await c.monitors();
+    assert.equal(calls[1].url, "https://x.test/v1/monitors");
+    assert.equal(calls[1].init.method, "GET");
+
+    await c.getMonitor("mon_1");
+    assert.equal(calls[2].url, "https://x.test/v1/monitors/mon_1");
+    assert.equal(calls[2].init.method, "GET");
+
+    await c.checkMonitor("mon_1");
+    assert.equal(calls[3].url, "https://x.test/v1/monitors/mon_1/check");
+    assert.equal(calls[3].init.method, "POST");
+
+    await c.updateMonitor({ id: "mon_1", status: "paused", condition: "price < 40" });
+    assert.equal(calls[4].url, "https://x.test/v1/monitors/mon_1");
+    assert.equal(calls[4].init.method, "PATCH");
+    assert.deepEqual(JSON.parse(String(calls[4].init.body)), { status: "paused", condition: "price < 40" });
+
+    await c.deleteMonitor("mon_1");
+    assert.equal(calls[5].url, "https://x.test/v1/monitors/mon_1");
+    assert.equal(calls[5].init.method, "DELETE");
+  });
 });
 
 describe("resolveConfig", () => {

@@ -5,6 +5,9 @@ import type {
   CrawlParams,
   ExtractParams,
   MapParams,
+  MonitorParams,
+  MonitorResponse,
+  MonitorUpdateParams,
   ParseParams,
   ParseResponse,
   RerankParams,
@@ -61,7 +64,11 @@ export class WebcrawlClient {
     this.timezone = opts.timezone ?? localTimezone();
   }
 
-  async request<T = ApiResponse>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async request<T = ApiResponse>(
+    method: "GET" | "POST" | "PATCH" | "DELETE",
+    path: string,
+    body?: unknown
+  ): Promise<T> {
     const headers: Record<string, string> = {
       accept: "application/json",
       "user-agent": this.userAgent,
@@ -226,6 +233,55 @@ export class WebcrawlClient {
 
   usage(): Promise<ApiResponse> {
     return this.request("GET", "/v1/account/usage");
+  }
+
+  /** List all web monitors on the account. */
+  monitors(): Promise<MonitorResponse> {
+    return this.request("GET", "/v1/monitors");
+  }
+
+  /** Fetch a single web monitor by ID, including its latest snapshot and per-URL state. */
+  getMonitor(id: string): Promise<MonitorResponse> {
+    return this.request("GET", `/v1/monitors/${encodeURIComponent(id)}`);
+  }
+
+  /** Create a new web monitor (single page, multi-URL list, or whole website section) and run its initial check. */
+  createMonitor(p: MonitorParams): Promise<MonitorResponse> {
+    const primaryUrl = p.url ?? p.urls?.[0];
+    if (!primaryUrl) {
+      throw new WebcrawlError("bad_request", "createMonitor requires `url` or non-empty `urls`");
+    }
+    return this.request(
+      "POST",
+      "/v1/monitors",
+      compact({
+        ...p,
+        url: primaryUrl,
+        maxPages: p.maxPages === undefined ? undefined : Math.min(25, Math.max(1, p.maxPages)),
+      })
+    );
+  }
+
+  /** Trigger an immediate live check on an existing web monitor, evaluating its condition and diffing against the prior snapshot. */
+  checkMonitor(id: string): Promise<MonitorResponse> {
+    return this.request("POST", `/v1/monitors/${encodeURIComponent(id)}/check`, {});
+  }
+
+  /** Update a monitor's status (`active` | `paused`), interval, watch goal, trigger condition, or notification channels. */
+  updateMonitor(p: MonitorUpdateParams): Promise<MonitorResponse> {
+    const { id, ...rest } = p;
+    if (!id) {
+      throw new WebcrawlError("bad_request", "updateMonitor requires `id`");
+    }
+    return this.request("PATCH", `/v1/monitors/${encodeURIComponent(id)}`, compact(rest));
+  }
+
+  /** Delete a web monitor by ID. */
+  deleteMonitor(id: string): Promise<MonitorResponse> {
+    if (!id) {
+      throw new WebcrawlError("bad_request", "deleteMonitor requires `id`");
+    }
+    return this.request("DELETE", `/v1/monitors/${encodeURIComponent(id)}`);
   }
 
   /** Send a 6-digit OTP verification code to an email address to sign up or log in (provisions 1,000 free monthly credits). */

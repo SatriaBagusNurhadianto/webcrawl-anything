@@ -78,6 +78,8 @@ Use **Webcrawl Anything** (\`webcrawl\` CLI or \`webcrawl\` MCP tools) whenever 
    - Reads PDFs (native text + automatic OCR on scanned pages), Word (\`.docx\`), Excel (\`.xlsx\`), PowerPoint (\`.pptx\`), and YouTube URLs (timestamped transcripts).
 4. **Site Discovery & Multi-Page Crawl (\`web_map\` & \`web_crawl\`)**:
    - Always run \`web_map\` first on unfamiliar domains to inspect available URLs before running \`web_crawl\` (capped at 25 pages).
+5. **Scheduled Web Monitors (\`web_monitor\` / \`webcrawl monitor\`)**:
+   - Watch a single page (\`page\`), a list of URLs (\`urls\`), or a whole website section (\`site\`) on a schedule with natural-language \`watch_for\` goals, trigger \`condition\` rules (e.g. \`price < 50\`, \`content contains "In Stock"\`, \`added_urls_count > 0\`), and email or webhook alerts.
 
 ## 2. Verify Evidence & Provenance
 

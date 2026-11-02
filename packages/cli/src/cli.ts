@@ -17,6 +17,7 @@ import {
   formatCrawl,
   formatCredits,
   formatMap,
+  formatMonitor,
   formatRerank,
   formatScrape,
   formatSearch,
@@ -61,6 +62,7 @@ Commands
   crawl <url>         Read several pages. -n max pages (default 5, max 25)
   extract <url>       Structured JSON. --prompt <text> or --schema <file.json>
   rerank <query>      Rank documents. --doc <text> (repeatable), --file <path>, or lines on stdin. -n top
+  monitor [subcmd]    Watch pages/sites: create <url...>, list, get <id>, check <id>, pause <id>, resume <id>, delete <id>
   targets             List all supported crawl & search targets and their requirements
   categories          List search categories and vertical filters
   setup               Register Webcrawl MCP server and Agent Skill (Claude, Cursor, Codex, Gemini, Windsurf)
@@ -79,6 +81,12 @@ Options
   --url <base>        Override WEBCRAWL_URL (default https://webcrawl.app)
   --country, --city   Where to search from (default: this machine's timezone)
   --no-cache          Skip cached pages (scrape)
+  --scope <s|u|w>     Monitor scope: page (default), urls, or site
+  --interval <mins>   Monitor check interval in minutes (default 60)
+  --watch-for <text>  What to watch for (e.g. "Pricing tiers and discounts")
+  --condition <expr>  Trigger rule expression (e.g. 'price < 50', 'content contains "In Stock"')
+  --notify-email <e>  Alert email address when triggered (or 'true' for account email)
+  --webhook <url>     Alert webhook URL when triggered
   --agent <name>      Target agent for setup: claude, cursor, codex, gemini, windsurf, or all (repeatable)
   --schema-profile    MCP schema profile for setup: compact (default) or full
   -h, --help
@@ -110,6 +118,12 @@ const OPTIONS = {
   "no-wait": { type: "boolean" },
   "no-cache": { type: "boolean" },
   content: { type: "boolean" },
+  scope: { type: "string" },
+  interval: { type: "string" },
+  "watch-for": { type: "string" },
+  condition: { type: "string" },
+  "notify-email": { type: "string" },
+  webhook: { type: "string" },
   agent: { type: "string", multiple: true },
   "schema-profile": { type: "string" },
 } as const;
@@ -456,8 +470,13 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
     if (credits) {io.err(`[${credits}]\n`);}
   };
 
-  const METERED_COMMANDS = new Set(["search", "scrape", "map", "crawl", "extract", "rerank"]);
-  if (METERED_COMMANDS.has(cmd) && cfg.effectiveMode === "cloud" && !cfg.apiKey && !deps.fetch) {
+  const METERED_COMMANDS = new Set(["search", "scrape", "map", "crawl", "extract", "rerank", "monitor"]);
+  if (
+    METERED_COMMANDS.has(cmd) &&
+    (cfg.effectiveMode === "cloud" || cmd === "monitor") &&
+    !cfg.apiKey &&
+    !deps.fetch
+  ) {
     const authHelp = [
       "webcrawl: Cloud mode requires a logged-in webcrawl.app account so credits can be attributed to your user (1,000 free monthly credits on signup).",
       "",
@@ -550,6 +569,116 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
         if (!docs.length) {throw new UsageError("No documents. Pass --doc, --file, or pipe lines on stdin.");}
         const res = await client.rerank({ query, documents: docs, topK: int(v.limit, "--limit") });
         emit(res, formatRerank(res));
+        return 0;
+      }
+      case "monitor": {
+        const cloudClient = new WebcrawlClient({
+          apiKey: cfg.apiKey,
+          baseUrl: cfg.baseUrl,
+          fetch: deps.fetch,
+          userAgent: "webcrawl-cli/1.3",
+        });
+        const first = (rest[0] ?? "").trim();
+        const subcommands = new Set([
+          "list",
+          "ls",
+          "create",
+          "add",
+          "watch",
+          "get",
+          "inspect",
+          "check",
+          "pause",
+          "resume",
+          "delete",
+          "rm",
+        ]);
+        const sub = !first
+          ? "list"
+          : subcommands.has(first.toLowerCase())
+            ? first.toLowerCase()
+            : "create";
+        const subArgs = subcommands.has(first.toLowerCase()) ? rest.slice(1) : rest;
+        const requireMonitorId = (actionName: string): string => {
+          const id = (subArgs[0] ?? "").trim();
+          if (!id) {
+            throw new UsageError(`Missing monitor id. Usage: webcrawl monitor ${actionName} <id>`);
+          }
+          return id;
+        };
+
+        if (sub === "list" || sub === "ls") {
+          const res = await cloudClient.monitors();
+          emit(res, formatMonitor(res));
+          return 0;
+        }
+        if (sub === "get" || sub === "inspect") {
+          const res = await cloudClient.getMonitor(requireMonitorId(sub));
+          emit(res, formatMonitor(res));
+          return 0;
+        }
+        if (sub === "check") {
+          const res = await cloudClient.checkMonitor(requireMonitorId("check"));
+          emit(res, formatMonitor(res));
+          return 0;
+        }
+        if (sub === "pause" || sub === "resume") {
+          const id = requireMonitorId(sub);
+          const notifyEmailRaw = v["notify-email"];
+          const res = await cloudClient.updateMonitor({
+            id,
+            status: sub === "pause" ? "paused" : "active",
+            name: v.name,
+            intervalMinutes: int(v.interval, "--interval"),
+            watchFor: v["watch-for"],
+            condition: v.condition,
+            notifyEmail:
+              notifyEmailRaw === undefined
+                ? undefined
+                : notifyEmailRaw === "true"
+                  ? true
+                  : notifyEmailRaw,
+            webhookUrl: v.webhook,
+          });
+          emit(res, formatMonitor(res));
+          return 0;
+        }
+        if (sub === "delete" || sub === "rm") {
+          const res = await cloudClient.deleteMonitor(requireMonitorId(sub));
+          emit(res, formatMonitor(res));
+          return 0;
+        }
+
+        // create / add / watch / `webcrawl monitor <url...>`
+        const urls = subArgs.map((s) => s.trim()).filter(Boolean);
+        if (!urls.length) {
+          throw new UsageError(
+            "Missing URL to watch. Usage: webcrawl monitor <url> [--scope page|urls|site] [--watch-for <text>] [--condition <expr>]"
+          );
+        }
+        const rawScope = (v.scope ?? (urls.length > 1 ? "urls" : "page")).toLowerCase();
+        if (rawScope !== "page" && rawScope !== "urls" && rawScope !== "site") {
+          throw new UsageError(`Invalid --scope "${v.scope}". Expected page, urls, or site.`);
+        }
+        const notifyEmailRaw = v["notify-email"];
+        const res = await cloudClient.createMonitor({
+          url: urls[0],
+          urls: rawScope === "urls" || urls.length > 1 ? urls : undefined,
+          mode: rawScope,
+          maxPages: int(v.limit, "--limit"),
+          name: v.name,
+          intervalMinutes: int(v.interval, "--interval"),
+          watchFor: v["watch-for"],
+          condition: v.condition,
+          notifyEmail:
+            notifyEmailRaw === undefined
+              ? undefined
+              : notifyEmailRaw === "true"
+                ? true
+                : notifyEmailRaw,
+          webhookUrl: v.webhook,
+        });
+        emit(res, formatMonitor(res));
         return 0;
       }
       case "categories": {

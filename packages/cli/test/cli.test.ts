@@ -239,4 +239,91 @@ describe("webcrawl CLI", () => {
     assert.match(out, /Open this URL in your browser/);
     assert.equal(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).apiKey, "wc_live_minted");
   });
+
+  it("monitor subcommands create, list, check, pause, and delete watches", async () => {
+    const t = setup((url, body) => {
+      if (url.endsWith("/v1/monitors") && body) {
+        return {
+          json: {
+            success: true,
+            monitor: {
+              id: "mon_99",
+              name: body.name ?? "Competitor Pricing",
+              mode: body.mode ?? "page",
+              url: body.url,
+              intervalMinutes: body.intervalMinutes ?? 60,
+              status: "active",
+              conditionJev: body.condition,
+              lastDiffSummary: "Initial snapshot captured",
+            },
+            credits: { charged: 1, remaining: 999 },
+          },
+        };
+      }
+      if (url.endsWith("/v1/monitors/mon_99/check")) {
+        return {
+          json: {
+            success: true,
+            monitor: {
+              id: "mon_99",
+              name: "Competitor Pricing",
+              url: "https://example.com/pricing",
+              intervalMinutes: 60,
+              status: "active",
+              lastConditionMet: true,
+              lastDiffSummary: "Price dropped below $50",
+            },
+          },
+        };
+      }
+      if (url.endsWith("/v1/monitors/mon_99")) {
+        return { json: { success: true, deleted: true } };
+      }
+      return {
+        json: {
+          success: true,
+          monitors: [
+            {
+              id: "mon_99",
+              name: "Competitor Pricing",
+              mode: "page",
+              url: "https://example.com/pricing",
+              intervalMinutes: 60,
+              status: "active",
+              conditionJev: "price < 50",
+            },
+          ],
+        },
+      };
+    });
+
+    const createCode = await t.run([
+      "monitor",
+      "https://example.com/pricing",
+      "--name",
+      "Competitor Pricing",
+      "--watch-for",
+      "Plan prices",
+      "--condition",
+      "price < 50",
+      "--notify-email",
+      "true",
+    ]);
+    assert.equal(createCode, 0);
+    assert.equal(t.calls[0].body?.condition, "price < 50");
+    assert.equal(t.calls[0].body?.notifyEmail, true);
+    assert.match(t.out(), /Competitor Pricing\s+\[mon_99\]/);
+
+    const listCode = await t.run(["monitor", "list"]);
+    assert.equal(listCode, 0);
+    assert.match(t.out(), /rule: price < 50/);
+
+    const checkCode = await t.run(["monitor", "check", "mon_99"]);
+    assert.equal(checkCode, 0);
+    assert.match(t.out(), /Price dropped below \$50/);
+
+    const delCode = await t.run(["monitor", "delete", "mon_99"]);
+    assert.equal(delCode, 0);
+    assert.match(t.out(), /Monitor deleted\./);
+  });
 });

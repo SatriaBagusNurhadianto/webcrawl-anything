@@ -121,3 +121,77 @@ export interface RerankParams {
   documents: RerankDocument[];
   topK?: number;
 }
+
+export type MonitorScopeMode = "page" | "urls" | "site";
+
+export interface MonitorParams {
+  /** Primary URL to watch (or site root URL when `mode: "site"`). */
+  url?: string;
+  /** Multiple URLs to watch when `mode: "urls"`. */
+  urls?: string[];
+  /** Watch scope: single `"page"` (default), `"urls"` list, or whole `"site"`. */
+  mode?: MonitorScopeMode;
+  /** Max pages to sample in `"site"` mode (1..25, default 5). */
+  maxPages?: number;
+  /** Optional friendly name for the watch. */
+  name?: string;
+  /** Poll interval in minutes (5..10080, default 60). */
+  intervalMinutes?: number;
+  /** Natural-language focus describing what to watch for (e.g. "Pricing tiers and discounts"). */
+  watchFor?: string;
+  /** Trigger condition expression (e.g. `'price < 50'`, `'content contains "In Stock"'`) or condition AST object. */
+  condition?: string | Record<string, unknown>;
+  /** Email address to alert when triggered, or `true` to use the signed-in account email. */
+  notifyEmail?: string | boolean;
+  /** HTTPS webhook URL to POST when triggered. */
+  webhookUrl?: string;
+}
+
+export interface MonitorUpdateParams {
+  id: string;
+  name?: string | null;
+  status?: "active" | "paused";
+  intervalMinutes?: number;
+  watchFor?: string | null;
+  condition?: string | Record<string, unknown> | null;
+  notifyEmail?: string | boolean | null;
+  webhookUrl?: string | null;
+  urls?: string[];
+  maxPages?: number;
+}
+
+export interface MonitorRecord {
+  id: string;
+  name?: string | null;
+  mode?: MonitorScopeMode;
+  url: string;
+  urls?: string[];
+  maxPages?: number;
+  watchFor?: string | null;
+  condition?: Record<string, unknown> | null;
+  conditionJev?: string | null;
+  notifyEmail?: string | null;
+  webhookUrl?: string | null;
+  intervalMinutes: number;
+  status: "active" | "paused";
+  lastContentHash?: string | null;
+  lastTitle?: string | null;
+  lastSnapshot?: string | null;
+  lastDiffSummary?: string | null;
+  lastConditionMet?: boolean | null;
+  lastNotificationStatus?: string | null;
+  changeCount?: number;
+  lastCheckedAt?: string | null;
+  lastChangeDetectedAt?: string | null;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
+export interface MonitorResponse extends ApiResponse {
+  monitor?: MonitorRecord;
+  monitors?: MonitorRecord[];
+  initialCheck?: Record<string, unknown>;
+  check?: Record<string, unknown>;
+  notifications?: Record<string, unknown>;
+  deleted?: boolean;
+}

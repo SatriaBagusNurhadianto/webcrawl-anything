@@ -34,6 +34,7 @@ describe("webcrawl MCP server", () => {
       "web_crawl",
       "web_extract",
       "web_map",
+      "web_monitor",
       "web_parse",
       "web_parse_status",
       "web_rerank",
@@ -134,5 +135,112 @@ describe("webcrawl MCP server", () => {
     const searchTool = tools.find((t) => t.name === "web_search");
     assert.ok(searchTool);
     assert.match(searchTool.description ?? "", /Search the web or structured verticals/);
+  });
+
+  it("web_monitor creates, lists, checks, pauses, and deletes watches", async () => {
+    const { client, calls } = await connect((url, body) => {
+      if (url.endsWith("/v1/monitors") && body) {
+        return {
+          json: {
+            success: true,
+            monitor: {
+              id: "mon_42",
+              name: "Pricing Watch",
+              mode: body.mode ?? "page",
+              url: body.url,
+              intervalMinutes: 60,
+              status: "active",
+              conditionJev: body.condition,
+              lastDiffSummary: "Initial snapshot captured",
+            },
+            initialCheck: {
+              conditionResult: { met: false, summary: "price ($79) < 50 -> false" },
+              snapshot: "# Plans\nPro: $79/mo",
+            },
+            credits: { charged: 1, remaining: 99 },
+          },
+        };
+      }
+      if (url.endsWith("/v1/monitors/mon_42/check")) {
+        return {
+          json: {
+            success: true,
+            monitor: {
+              id: "mon_42",
+              name: "Pricing Watch",
+              mode: "page",
+              url: "https://example.com/pricing",
+              intervalMinutes: 60,
+              status: "active",
+              lastConditionMet: true,
+              lastDiffSummary: "Price dropped to $45",
+            },
+            check: {
+              conditionResult: { met: true, summary: "price ($45) < 50 -> true" },
+            },
+          },
+        };
+      }
+      if (url.endsWith("/v1/monitors/mon_42") && body) {
+        return {
+          json: {
+            success: true,
+            monitor: {
+              id: "mon_42",
+              name: "Pricing Watch",
+              url: "https://example.com/pricing",
+              intervalMinutes: 60,
+              status: body.status ?? "paused",
+            },
+          },
+        };
+      }
+      if (url.endsWith("/v1/monitors/mon_42")) {
+        return { json: { success: true, deleted: true } };
+      }
+      return {
+        json: {
+          success: true,
+          monitors: [
+            {
+              id: "mon_42",
+              name: "Pricing Watch",
+              mode: "page",
+              url: "https://example.com/pricing",
+              intervalMinutes: 60,
+              status: "active",
+              conditionJev: "price < 50",
+            },
+          ],
+        },
+      };
+    });
+
+    const created = await client.callTool({
+      name: "web_monitor",
+      arguments: {
+        url: "https://example.com/pricing",
+        name: "Pricing Watch",
+        watch_for: "Plan prices",
+        condition: "price < 50",
+        notify_email: "true",
+      },
+    });
+    assert.ok(!created.isError);
+    assert.match(text(created), /Pricing Watch \[mon_42\]/);
+    assert.match(text(created), /rule: price < 50/);
+    assert.equal(calls[0].body?.notifyEmail, true);
+
+    const listed = await client.callTool({ name: "web_monitor", arguments: { action: "list" } });
+    assert.match(text(listed), /monitors \(1\):/);
+
+    const checked = await client.callTool({ name: "web_monitor", arguments: { action: "check", id: "mon_42" } });
+    assert.match(text(checked), /Price dropped to \$45/);
+
+    const paused = await client.callTool({ name: "web_monitor", arguments: { action: "pause", id: "mon_42" } });
+    assert.match(text(paused), /\(paused/);
+
+    const deleted = await client.callTool({ name: "web_monitor", arguments: { action: "delete", id: "mon_42" } });
+    assert.match(text(deleted), /Monitor deleted\./);
   });
 });
