@@ -42,6 +42,8 @@ export interface Deps {
   fetch?: typeof fetch;
   /** Config file path override (tests). */
   configFile?: string;
+  /** Browser opener override (tests). */
+  openUrl?: (url: string) => void;
   /** Home directory override for `webcrawl setup` tests. */
   homeDir?: string;
   /** Working directory override for `webcrawl setup` tests. */
@@ -158,7 +160,8 @@ function openBrowserUrl(url: string): void {
 async function runWebOAuthLogin(
   baseUrl: string,
   fetchImpl: typeof fetch,
-  io: Io
+  io: Io,
+  openUrl: (url: string) => void = openBrowserUrl
 ): Promise<{ apiKey: string; email?: string; creditsRemaining?: number; creditsLimit?: number; plan?: string }> {
   const verifier = crypto.randomBytes(32).toString("base64url");
   const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
@@ -206,8 +209,9 @@ async function runWebOAuthLogin(
             "Waiting for browser authorization...",
           ].join("\n") + "\n"
         );
-        openBrowserUrl(authUrl);
+        openUrl(authUrl);
 
+        let handled = false;
         server.on("request", async (req, res) => {
           try {
             const u = new URL(req.url || "/", redirectUri);
@@ -217,14 +221,29 @@ async function runWebOAuthLogin(
             }
             const code = u.searchParams.get("code");
             const returnedState = u.searchParams.get("state");
-            if (!code || returnedState !== state) {
-              res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-              res.end("<h3>Authorization failed or state mismatch. You can close this tab.</h3>");
-              clearTimeout(timeout);
-              server.close();
-              reject(new Error("OAuth callback missing code or state mismatch."));
+            if (handled) {
+              // Browser retry / prefetch of the same callback: the code is single-use, so never exchange it twice.
+              res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+              res.end("<h3>Already received. You can close this tab and return to your terminal.</h3>");
               return;
             }
+            const oauthError = u.searchParams.get("error");
+            if (oauthError && returnedState === state) {
+              handled = true;
+              res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+              res.end("<h3>Authorization was cancelled. You can close this tab.</h3>");
+              clearTimeout(timeout);
+              server.close();
+              reject(new Error(`OAuth authorization failed: ${oauthError}.`));
+              return;
+            }
+            if (!code || returnedState !== state) {
+              // Stray or forged request: reject it but keep waiting for the real callback.
+              res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+              res.end("<h3>Authorization failed or state mismatch.</h3>");
+              return;
+            }
+            handled = true;
 
             const tokenRes = await fetchImpl(`${baseUrl}/oauth/token`, {
               method: "POST",
@@ -238,7 +257,13 @@ async function runWebOAuthLogin(
               }).toString(),
             });
             if (!tokenRes.ok) {
-              throw new Error(`OAuth token exchange failed (HTTP ${tokenRes.status}).`);
+              const detail = (await tokenRes.json().catch(() => ({}))) as { error?: string; error_description?: string };
+              const reason = detail.error_description || detail.error;
+              res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+              res.end("<h3>Webcrawl sign-in failed. Return to your terminal for details.</h3>");
+              throw new Error(
+                `OAuth token exchange failed (HTTP ${tokenRes.status}${reason ? `: ${reason}` : ""}). Run \`webcrawl login\` again, or use \`webcrawl login --email <you@domain.com>\`.`
+              );
             }
             const tokenData = (await tokenRes.json()) as { access_token: string };
             let finalKey = tokenData.access_token;
@@ -528,7 +553,7 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
 
         // 1. Browser OAuth PKCE redirect (default for `webcrawl login`; `--web` kept for compatibility)
         if (v.web || (!v.email && !v.key)) {
-          const webRes = await runWebOAuthLogin(cfg.baseUrl, deps.fetch ?? globalThis.fetch, io);
+          const webRes = await runWebOAuthLogin(cfg.baseUrl, deps.fetch ?? globalThis.fetch, io, deps.openUrl);
           const existing = readConfigFile(file);
           writeConfigFile(
             { ...existing, apiKey: webRes.apiKey, ...(v.url ? { baseUrl: v.url } : {}) },

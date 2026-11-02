@@ -194,4 +194,49 @@ describe("webcrawl CLI", () => {
     assert.match(t.out(), /Created webcrawl\.app account as agent@example\.com/);
     assert.match(t.out(), /1000 credits remaining of 1000/);
   });
+
+  it("login (no flags) uses browser OAuth and exchanges the code exactly once", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wc-cli-"));
+    const calls: string[] = [];
+    let out = "";
+    const f = (async (url: string) => {
+      calls.push(url);
+      if (url.endsWith("/oauth/register")) return new Response(JSON.stringify({ client_id: "wc_client_t" }), { status: 201 });
+      if (url.endsWith("/oauth/token")) return new Response(JSON.stringify({ access_token: "wc_mcp_tok" }), { status: 200 });
+      if (url.endsWith("/v1/account/keys")) return new Response(JSON.stringify({ success: true, apiKey: "wc_live_minted" }), { status: 200 });
+      return new Response(JSON.stringify({ user: { email: "a@b.co", creditsRemaining: 1000, creditsLimit: 1000, plan: "free" } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const callbackDone = new Promise<void>((resolve, reject) => {
+      const openUrl = async (authUrl: string) => {
+        try {
+          const au = new URL(authUrl);
+          const redirect = au.searchParams.get("redirect_uri")!;
+          const state = au.searchParams.get("state")!;
+          const base = new URL(redirect).origin;
+          assert.equal((await fetch(`${base}/favicon.ico`)).status, 404);
+          assert.equal((await fetch(`${redirect}?code=x&state=wrong`)).status, 400);
+          assert.equal((await fetch(`${redirect}?code=c1&state=${state}`)).status, 200);
+          // Browser retry of the same callback must not trigger a second exchange (server may already be closed).
+          await fetch(`${redirect}?code=c1&state=${state}`).catch(() => undefined);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      (globalThis as { __openUrl?: unknown }).__openUrl = openUrl;
+    });
+    const openUrl = (globalThis as unknown as { __openUrl: (u: string) => void }).__openUrl;
+
+    const code = await main(
+      ["login"],
+      { out: (s) => (out += s), err: () => undefined, readStdin: async () => "", isTTY: false },
+      { env: { WEBCRAWL_URL: "https://x.test" }, fetch: f, configFile: join(dir, "config.json"), openUrl }
+    );
+    await callbackDone;
+    assert.equal(code, 0);
+    assert.equal(calls.filter((u) => u.endsWith("/oauth/token")).length, 1);
+    assert.match(out, /Open this URL in your browser/);
+    assert.equal(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).apiKey, "wc_live_minted");
+  });
 });
