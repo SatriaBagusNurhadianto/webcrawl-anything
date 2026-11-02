@@ -150,7 +150,7 @@ describe("webcrawl CLI", () => {
     assert.equal(code, 1);
     assert.match(err, /Cloud mode requires a logged-in webcrawl\.app account/);
     assert.match(err, /webcrawl login --email/);
-    assert.match(err, /webcrawl login --web/);
+    assert.match(err, /webcrawl login$/m);
   });
 
   it("login --email sends OTP and --code verifies account, assigns 1000 credits, and saves key", async () => {

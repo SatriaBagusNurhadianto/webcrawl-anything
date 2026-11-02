@@ -63,7 +63,7 @@ Commands
   categories          List search categories and vertical filters
   setup               Register Webcrawl MCP server and Agent Skill (Claude, Cursor, Codex, Gemini, Windsurf)
   doctor              Check local crawl engine, parsers, stealth browser, and cloud configuration
-  login / signup      Create an account or sign in (--email <addr> [--code <6-digit>], --web, or --key <key>)
+  login / signup      Create an account or sign in in your browser (default), or --email <addr> [--code <6-digit>], or --key <key>
   whoami              Show execution mode (local vs cloud), account email, key source, and credit balance
 
 Options
@@ -71,7 +71,7 @@ Options
   --email <addr>      Email address for CLI account creation / OTP sign-in (assigns 1,000 free credits)
   --code <6-digit>    6-digit email verification code from \`webcrawl login --email <addr>\`
   --name <name>       Optional display name when creating an account with \`--email\`
-  --web               Sign in or create an account in your browser via OAuth PKCE redirect
+  --web               Sign in via browser OAuth (default for login; no need to pass it)
   --json              Print the raw JSON response
   --api-key <key>     Override WEBCRAWL_API_KEY
   --url <base>        Override WEBCRAWL_URL (default https://webcrawl.app)
@@ -373,7 +373,7 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
       "     webcrawl login --email <you@domain.com>",
       "     webcrawl login --email <you@domain.com> --code <6-digit-code>",
       "  2. Browser OAuth redirect:",
-      "     webcrawl login --web",
+      "     webcrawl login",
       "  3. Or run in zero-key local mode:",
       `     webcrawl --mode local ${cmd} ${rest.join(" ")}`,
     ].join("\n");
@@ -387,7 +387,7 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
             loginCommands: {
               sendOtp: "webcrawl login --email <you@domain.com>",
               verifyOtp: "webcrawl login --email <you@domain.com> --code <6-digit-code>",
-              browserRedirect: "webcrawl login --web",
+              browserRedirect: "webcrawl login",
               signupUrl: `${cfg.baseUrl}/?signup=cli`,
             },
           },
@@ -526,8 +526,8 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
           userAgent: "webcrawl-cli/1.2",
         });
 
-        // 1. Browser OAuth PKCE redirect (`webcrawl login --web`)
-        if (v.web) {
+        // 1. Browser OAuth PKCE redirect (default for `webcrawl login`; `--web` kept for compatibility)
+        if (v.web || (!v.email && !v.key)) {
           const webRes = await runWebOAuthLogin(cfg.baseUrl, deps.fetch ?? globalThis.fetch, io);
           const existing = readConfigFile(file);
           writeConfigFile(
@@ -622,8 +622,8 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
         }
 
         // 3. Direct API key (`webcrawl login --key wc_live_...` or interactive paste)
-        const key = (v.key ?? (await readKeyInteractively(io))).trim();
-        if (!key) {throw new UsageError("No key provided. Pass --key <wc_live_...>, --email <you@domain.com>, or --web.");}
+        const key = v.key?.trim() ?? (await readKeyInteractively(io)).trim();
+        if (!key) {throw new UsageError("No key provided. Pass --key <wc_live_...> or --email <you@domain.com>, or run `webcrawl login` to sign in via your browser.");}
         const existing = readConfigFile(file);
         writeConfigFile({ ...existing, apiKey: key, ...(v.url ? { baseUrl: v.url } : {}) }, file);
         io.out(`Saved your key to ${file}.\n`);
@@ -634,7 +634,7 @@ export async function main(argv: string[], io: Io, deps: Deps = {}): Promise<num
         const lines = [
           `endpoint: ${cfg.baseUrl} (${cfg.source.baseUrl})`,
           `mode:     ${cfg.effectiveMode} (${cfg.source.mode})`,
-          `key:      ${masked}${cfg.apiKey ? ` (${cfg.source.apiKey})` : ". Run `webcrawl login` (`--email <you@domain.com>` or `--web`) or set WEBCRAWL_API_KEY (local mode works with zero key)."}`,
+          `key:      ${masked}${cfg.apiKey ? ` (${cfg.source.apiKey})` : ". Run `webcrawl login` to sign in via your browser (or `--email <you@domain.com>`), or set WEBCRAWL_API_KEY (local mode works with zero key)."}`,
         ];
         if (cfg.apiKey) {
           const u = await client.usage();
