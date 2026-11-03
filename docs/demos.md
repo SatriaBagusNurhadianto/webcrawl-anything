@@ -18,6 +18,8 @@ Everything here runs **locally with no API key**. Each demo was run against the 
 
 ## 1. Is this CVE in my dependencies?
 
+![clip](./assets/clips/1-cve.svg)
+
 ```text
 Is CVE-2024-3094 in anything I depend on? Look it up, give me the CVSS score, CISA KEV
 status and fixed versions, then check my package-lock.json and link the evidence.
@@ -34,6 +36,8 @@ Expected: `CVE-2024-3094 … 10 critical nvd` with the NVD link, then corroborat
 **Clip (30s):** open a real project, paste the prompt, cut to the CVSS line, end on the agent's "not affected / affected" verdict with the link.
 
 ## 2. Docs site to cheat sheet
+
+![clip](./assets/clips/2-docs-cheatsheet.svg)
 
 ```text
 Map https://docs.stripe.com/webhooks, crawl every page under it into Markdown, and
@@ -72,6 +76,8 @@ Expected: a monitor id with `rule: content contains "MCP"` and a `waiting` or `t
 
 ## 4. Explain a repo before I clone it
 
+![clip](./assets/clips/4-github.svg)
+
 ```text
 Before I clone https://github.com/torvalds/linux, tell me what it is, its license,
 how active it is, and how the README says to build it.
@@ -86,6 +92,8 @@ npx webcrawl scrape https://github.com/torvalds/linux
 **Clip (20s):** paste a repo URL someone just posted on X and get the summary back.
 
 ## 5. Read a paper for me
+
+![clip](./assets/clips/5-arxiv.svg)
 
 ```text
 Read https://arxiv.org/abs/1706.03762 and give me the problem, the method, the headline
@@ -104,6 +112,8 @@ Use the `/abs/` page. Direct `/pdf/` links are not reliable in local mode yet.
 
 ## 6. What changed this year, with sources
 
+![clip](./assets/clips/6-research.svg)
+
 ```text
 What changed in the Model Context Protocol spec in 2026? Search, read the primary
 sources, and give me a dated list of changes with a link under every item.
@@ -119,6 +129,8 @@ npx webcrawl scrape https://modelcontextprotocol.io/specification/2026-07-28/cha
 **Clip (45s):** the payoff is the links. Click two of them on camera.
 
 ## 7. Turn a docs site into a RAG corpus
+
+![clip](./assets/clips/7-corpus.svg)
 
 ```text
 Map https://react.dev, crawl the /learn section into one Markdown file per page under
