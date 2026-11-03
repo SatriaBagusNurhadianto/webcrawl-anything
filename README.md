@@ -1,11 +1,47 @@
 # Webcrawl Anything
 
-**Crawl, search, and extract structured evidence from any website, SPA, PDF, Office file, YouTube video, GitHub repo, ArXiv paper, shopping offer, travel fare, or CVE advisory — from a single CLI and MCP server.**
+**Give your AI agent the whole web. Free, local, no API key.**
+
+Search, scrape, map, crawl and monitor any website, SPA, PDF, YouTube video, GitHub repo, ArXiv paper, product page or CVE, from Claude Code, Cursor, Codex or your terminal.
 
 [![npm version](https://img.shields.io/npm/v/webcrawl?color=0a0a0a)](https://www.npmjs.com/package/webcrawl)
 [![MCP Server](https://img.shields.io/npm/v/@webcrawl/mcp?label=%40webcrawl%2Fmcp&color=2563eb)](https://www.npmjs.com/package/@webcrawl/mcp)
-[![Cloud API](https://img.shields.io/badge/cloud-webcrawl.app-10b981)](https://webcrawl.app)
+[![npm downloads](https://img.shields.io/npm/dm/webcrawl?color=10b981)](https://www.npmjs.com/package/webcrawl)
+[![GitHub stars](https://img.shields.io/github/stars/brainfish-ai/webcrawl-anything?style=flat&color=f59e0b)](https://github.com/brainfish-ai/webcrawl-anything/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+<p align="center">
+  <img src="./docs/assets/demo.svg" alt="webcrawl CLI finding a CVE, mapping the Stripe webhook docs and reading a GitHub repo in about a second each, locally with no API key" width="820">
+</p>
+
+<sub>Every frame above is real output, recorded with <code>node scripts/record-demo.mjs</code>. No API key, no account.</sub>
+
+## Set up in one line
+
+```bash
+npx webcrawl setup
+```
+
+That registers the `@webcrawl/mcp` server and the Webcrawl Agent Skill in Claude Code, Cursor, Codex, Gemini and Windsurf. Restart your agent and paste one of these:
+
+```text
+Is CVE-2024-3094 in anything I depend on? Look it up, give me the CVSS score, CISA KEV
+status and fixed versions, then check my package-lock.json and link the evidence.
+```
+
+```text
+Map https://docs.stripe.com/webhooks, crawl every page under it into Markdown, and
+write me a one-page cheat sheet with the source URL under each section.
+```
+
+```text
+Watch https://news.ycombinator.com every hour and alert me when a story about MCP
+reaches the front page. Show me the monitor you created.
+```
+
+More reproducible prompts, each with the command it runs: **[docs/demos.md](./docs/demos.md)**.
+
+No agent? Use the CLI directly: `npx webcrawl search "react 19 compiler"`.
 
 ---
 
@@ -172,11 +208,31 @@ Every community improvement to a target plugin (`src/targets/`), vertical extrac
 
 ---
 
+### Show your build
+
+Built something with webcrawl, like a price tracker, a docs corpus, a research agent, or a monitor that saved you a refresh? Open a [Show your build](https://github.com/brainfish-ai/webcrawl-anything/discussions/categories/show-and-tell) discussion with the prompt you used and a screenshot. We feature the best ones here and in release notes.
+
+Add the badge to your project:
+
+```markdown
+[![Built with webcrawl](https://img.shields.io/badge/built%20with-webcrawl-0a0a0a)](https://github.com/brainfish-ai/webcrawl-anything)
+```
+
+---
+
 ### Contributing a New Target or Extractor
 
 Want to add a new target (e.g., Reddit threads, Hacker News discussions, SEC EDGAR filings, npm/PyPI packages, or a regional real-estate/shopping portal)?
 
 See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the 3-step guide to registering a `CrawlTargetPlugin` in `src/targets/` with a fixture test in `src/__tests__/targets.test.ts`.
+
+New here? Start with a [good first issue](https://github.com/brainfish-ai/webcrawl-anything/issues?q=is%3Aopen+label%3A%22good+first+issue%22) or a [target plugin request](https://github.com/brainfish-ai/webcrawl-anything/issues?q=is%3Aopen+label%3Atarget-plugin).
+
+### Contributors
+
+Every merged PR is credited by name in the release notes.
+
+[![Contributors](https://contrib.rocks/image?repo=brainfish-ai/webcrawl-anything)](https://github.com/brainfish-ai/webcrawl-anything/graphs/contributors)
 
 ---
 
