@@ -427,13 +427,17 @@ export function createLocalEngineClient(): LocalEngineBackend {
 
     async map(p: { url: string; limit?: number; search?: string }): Promise<Record<string, unknown>> {
       const targetUrl = /^https?:\/\//i.test(p.url) ? p.url : `https://${p.url}`;
-      const mapped = await mapWebsiteUrls(targetUrl, {
-        limit: p.limit ?? 100,
-      });
       const needle = p.search?.trim().toLowerCase();
-      const links = needle
+      // Discover a larger set first so the substring filter can match URLs
+      // that would otherwise be truncated away before filtering.
+      const discoveryLimit = needle ? Math.max(p.limit ?? 100, 1000) : (p.limit ?? 100);
+      const mapped = await mapWebsiteUrls(targetUrl, {
+        limit: discoveryLimit,
+      });
+      const filtered = needle
         ? mapped.links.filter((l) => l.toLowerCase().includes(needle))
         : mapped.links;
+      const links = filtered.slice(0, p.limit ?? 100);
       return {
         success: true,
         mode: "local",
