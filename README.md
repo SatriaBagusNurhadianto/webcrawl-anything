@@ -226,6 +226,14 @@ Want to add a new target (e.g., Reddit threads, Hacker News discussions, SEC EDG
 
 See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the 3-step guide to registering a `CrawlTargetPlugin` in `src/targets/` with a fixture test in `src/__tests__/targets.test.ts`.
 
+New here? Start with a [good first issue](https://github.com/brainfish-ai/webcrawl-anything/issues?q=is%3Aopen+label%3A%22good+first+issue%22) or a [target plugin request](https://github.com/brainfish-ai/webcrawl-anything/issues?q=is%3Aopen+label%3Atarget-plugin).
+
+### Contributors
+
+Every merged PR is credited by name in the release notes.
+
+[![Contributors](https://contrib.rocks/image?repo=brainfish-ai/webcrawl-anything)](https://github.com/brainfish-ai/webcrawl-anything/graphs/contributors)
+
 ---
 
 ### License
