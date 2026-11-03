@@ -84,7 +84,19 @@ jobs:
               echo "✓ ${pkg_name}@${VERSION} is already published on npm, skipping."
             else
               echo "→ Publishing ${pkg_name}@${VERSION} (${workspace_path})..."
-              npm publish --workspace="${workspace_path}" --access public
+              local out
+              if ! out=$(npm publish --workspace="${workspace_path}" --access public 2>&1); then
+                echo "$out"
+                # The release script publishes locally before pushing the tag, so the registry
+                # index can lag behind and reject this as a duplicate. That is not a failure.
+                if echo "$out" | grep -qE "E409|previously (staged|published)|cannot publish over"; then
+                  echo "✓ ${pkg_name}@${VERSION} was already published (registry conflict), continuing."
+                else
+                  return 1
+                fi
+              else
+                echo "$out"
+              fi
             fi
           }
 
